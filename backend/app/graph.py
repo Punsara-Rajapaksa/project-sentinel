@@ -12,19 +12,20 @@ def agent_1_ingestion(state: PipelineState) -> dict:
 
 
 def agent_2_semantic(state: PipelineState) -> dict:
-    return semantic_agent(state)
-
+    # Placeholder: returns a harmless update to satisfy LangGraph
+    return {"timestamp": state.get("timestamp", "")}
 
 def agent_3_verification(state: PipelineState) -> dict:
-    return verification_agent(state)
-
+    # Placeholder
+    return {"timestamp": state.get("timestamp", "")}
 
 def agent_4_explain(state: PipelineState) -> dict:
-    return explainer_agent(state)
-
+    # Placeholder
+    return {"timestamp": state.get("timestamp", "")}
 
 def agent_5_honeypot(state: PipelineState) -> dict:
-    return honeypot_agent(state)
+    # Placeholder
+    return {"timestamp": state.get("timestamp", "")}
 
 
 def should_activate_honeypot(state: PipelineState) -> str:
