@@ -1,7 +1,10 @@
 import json
 import logging
 import os
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()  # Load .env now, before accessing the key
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +12,7 @@ client = OpenAI(
     api_key=os.getenv("DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com"
 )
+
 
 
 def analyze_message_risk(message_text: str, similar_scams: list[str]) -> dict:
