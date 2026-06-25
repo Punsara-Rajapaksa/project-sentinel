@@ -22,12 +22,16 @@ def anonymize_text(text: str) -> str:
     if not load_model():
         return text
 
-    # Step 1: regex for email addresses and phone numbers
+    # Step 1: regex for email addresses
     text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]', text)
-    text = re.sub(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b', '[PHONE]', text)  # US-like, adjust as needed
     
-    # Sri Lankan mobile (07x xxxx xxx) and landline (0xx xxxx xxx)
-    text = re.sub(r'\b0\d{9}\b', '[PHONE]', text)  # simplest: 0 followed by 9 digits
+    # Step 1b: phone numbers (US-like and Sri Lankan)
+    # US-like: 123-456-7890
+    text = re.sub(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b', '[PHONE]', text)
+    # Sri Lankan mobile: 07x xxx xxxx (10 digits starting with 07)
+    text = re.sub(r'\b07[1-9]\d{7}\b', '[PHONE]', text)
+    # Sri Lankan generic: 0 followed by 9 digits (catches landlines too)
+    text = re.sub(r'\b0\d{9}\b', '[PHONE]', text)
 
     # Step 2: spaCy for PERSON and GPE
     doc = nlp(text)
