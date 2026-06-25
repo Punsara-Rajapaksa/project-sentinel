@@ -12,8 +12,7 @@ def agent_1_ingestion(state: PipelineState) -> dict:
 
 
 def agent_2_semantic(state: PipelineState) -> dict:
-    # Placeholder: returns a harmless update to satisfy LangGraph
-    return {"timestamp": state.get("timestamp", "")}
+    return semantic_agent(state)
 
 def agent_3_verification(state: PipelineState) -> dict:
     # Placeholder
