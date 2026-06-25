@@ -25,7 +25,9 @@ def anonymize_text(text: str) -> str:
     # Step 1: regex for email addresses and phone numbers
     text = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]', text)
     text = re.sub(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b', '[PHONE]', text)  # US-like, adjust as needed
-    # Add more phone patterns if desired
+    
+    # Sri Lankan mobile (07x xxxx xxx) and landline (0xx xxxx xxx)
+    text = re.sub(r'\b0\d{9}\b', '[PHONE]', text)  # simplest: 0 followed by 9 digits
 
     # Step 2: spaCy for PERSON and GPE
     doc = nlp(text)
