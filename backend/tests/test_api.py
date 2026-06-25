@@ -11,7 +11,8 @@ def test_health():
 
 
 def test_analyze_phishing():
-    payload = {"message": "From: scammer@phish.com Subject: Urgent! Account Suspended Body: Click here to verify"}
+    # Added \n so the ingestion.py parser can actually split the lines
+    payload = {"message": "From: scammer@phish.com\nSubject: Urgent! Account Suspended\nBody: Click here to verify"}
     res = client.post("/api/analyze", json=payload)
     assert res.status_code == 200
     data = res.json()
