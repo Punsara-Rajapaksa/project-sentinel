@@ -4,20 +4,23 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()  # Load .env now, before accessing the key
+load_dotenv()  # Load .env variables cleanly
 
 logger = logging.getLogger(__name__)
 
-client = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com"
-)
+# Fallback check for either naming convention in your .env
+api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
 
+# Repoint the OpenAI client directly to the OpenRouter gateway
+client = OpenAI(
+    api_key=api_key,
+    base_url="https://openrouter.ai/api/v1"
+)
 
 
 def analyze_message_risk(message_text: str, similar_scams: list[str]) -> dict:
     """
-    Analyze message for social engineering threats using DeepSeek CoT reasoning.
+    Analyze message for social engineering threats using DeepSeek V4 Flash via OpenRouter.
     
     Args:
         message_text: The anonymized message text to analyze
@@ -53,15 +56,26 @@ Do not wrap the JSON in markdown code fences."""
     
     try:
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="deepseek/deepseek-v4-flash",  # Leverages the $0.09/M budget champion model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.1,
+            extra_headers={
+                "HTTP-Referer": "http://localhost:5173",  # Identifies local dev environment traffic
+                "X-Title": "Project Sentinel"
+            }
         )
         
         response_text = response.choices[0].message.content.strip()
+        
+        # 🛡️ OpenRouter Safety Net
+        # Strips out markdown fences (```json ... ```) if the model disobeys instructions
+        if response_text.startswith("```json"):
+            response_text = response_text[7:-3].strip()
+        elif response_text.startswith("```"):
+            response_text = response_text[3:-3].strip()
         
         # Parse JSON from response
         result = json.loads(response_text)
@@ -74,7 +88,7 @@ Do not wrap the JSON in markdown code fences."""
         }
     
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse DeepSeek response as JSON: {e}")
+        logger.error(f"Failed to parse DeepSeek response as JSON: {e}\nRaw Response: {response_text}")
         return {
             "urgency_score": 0.5,
             "authority_manipulation_score": 0.5,
