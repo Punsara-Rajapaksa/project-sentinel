@@ -44,6 +44,8 @@ def analyze_message_risk(message_text: str, similar_scams: list[str]) -> dict:
 - Financial requests or credential harvesting
 - Inconsistencies with normal communication patterns
 
+The text may contain anonymized placeholders like [PERSON], [EMAIL], [PHONE], [LOCATION] which are intentional redactions for privacy and should be ignored when assessing risk. These placeholders are not signs of suspicious activity.
+
 Return a JSON object with keys:
 - urgency_score (float 0-1)
 - authority_manipulation_score (float 0-1)

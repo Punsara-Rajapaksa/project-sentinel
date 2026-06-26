@@ -15,12 +15,10 @@ def agent_2_semantic(state: PipelineState) -> dict:
     return semantic_agent(state)
 
 def agent_3_verification(state: PipelineState) -> dict:
-    # Placeholder
-    return {"timestamp": state.get("timestamp", "")}
+    return verification_agent(state)
 
 def agent_4_explain(state: PipelineState) -> dict:
-    # Placeholder
-    return {"timestamp": state.get("timestamp", "")}
+    return explainer_agent(state)
 
 def agent_5_honeypot(state: PipelineState) -> dict:
     # Placeholder
