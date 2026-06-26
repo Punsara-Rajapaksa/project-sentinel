@@ -42,10 +42,17 @@ def run_agent(state: PipelineState) -> dict:
         else:
             structural_similarity_score = 0.0
         
+        # Compute composite risk score from urgency + authority + structural similarity
+        composite_risk_score = round(
+            (analysis["urgency_score"] + analysis["authority_manipulation_score"] + structural_similarity_score) / 3,
+            4
+        )
+        
         return {
             "urgency_score": analysis["urgency_score"],
             "authority_manipulation_score": analysis["authority_manipulation_score"],
             "structural_similarity_score": structural_similarity_score,
+            "composite_risk_score": composite_risk_score,
             "risk_assessment": analysis["risk_assessment"],
             "risk_factors": analysis["risk_factors"],
             "is_anonymized": True,
@@ -57,6 +64,7 @@ def run_agent(state: PipelineState) -> dict:
             "urgency_score": 0.5,
             "authority_manipulation_score": 0.5,
             "structural_similarity_score": 0.0,
+            "composite_risk_score": 0.5,
             "risk_assessment": f"Error during analysis: {str(e)}",
             "risk_factors": ["Analysis error"],
             "is_anonymized": True,

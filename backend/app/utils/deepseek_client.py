@@ -56,7 +56,7 @@ Do not wrap the JSON in markdown code fences."""
     
     try:
         response = client.chat.completions.create(
-            model="deepseek/deepseek-v4-flash",  # Leverages the $0.09/M budget champion model
+            model="deepseek/deepseek-v4-flash",  
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
