@@ -15,6 +15,22 @@ export interface AnalysisResponse {
   risk_factors: string[];
   is_anonymized: boolean;
   request_id: string;
+  // ── Agent 2 text fields ──
+  original_text?: string;
+  anonymized_text?: string;
+  // ── Agent 3 verification ──
+  verification_details?: {
+    domain: string;
+    domain_age_days: number;
+    spf_valid: boolean;
+    dkim_valid: boolean;
+    typosquatting_detected: boolean;
+    malicious_urls: string[];
+    error?: string;
+  };
+  authenticity_confidence_score?: number;
+  // ── Agent 4 explainer ──
+  recommendation?: string;
 }
 
 export async function analyzeMessage(message: string): Promise<AnalysisResponse> {

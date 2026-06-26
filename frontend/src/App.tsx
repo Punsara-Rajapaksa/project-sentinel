@@ -29,8 +29,8 @@ const DEMO_MESSAGES = [
 const PIPELINE = [
   { id: 1, label: "Ingestion", active: true },
   { id: 2, label: "Semantic Risk", active: true },
-  { id: 3, label: "OSINT Verify", active: false },
-  { id: 4, label: "Explainer", active: false },
+  { id: 3, label: "OSINT Verify", active: true },
+  { id: 4, label: "Explainer", active: true },
   { id: 5, label: "Honeypot", active: false },
 ];
 
@@ -177,13 +177,28 @@ function App() {
         <button
           onClick={startDemo}
           disabled={demoRunning}
-          className={`px-4 py-1.5 rounded text-sm font-semibold transition ${
+          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
             demoRunning
               ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-              : "bg-emerald-600 hover:bg-emerald-500 text-white"
+              : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20"
           }`}
         >
-          {demoRunning ? "Demo Running…" : "▶ Run Demo"}
+          {demoRunning ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Demo Running…
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+              </svg>
+              Run Demo
+            </>
+          )}
         </button>
       </header>
 
