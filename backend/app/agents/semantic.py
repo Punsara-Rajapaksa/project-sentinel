@@ -28,17 +28,19 @@ def run_agent(state: PipelineState) -> dict:
         anonymized_text = anonymize_text(combined_text)
         
         # Query ChromaDB for similar scams
-        similar_scams = query_similar_scams(anonymized_text, n_results=3)
+        similar_data = query_similar_scams(anonymized_text, n_results=3)
+        similar_scams = similar_data["documents"] if similar_data else []
+        distances = similar_data["distances"] if similar_data else []
         
         # Call DeepSeek for risk analysis
         analysis = analyze_message_risk(anonymized_text, similar_scams)
-        
-        # Compute structural similarity score (max similarity from ChromaDB or 0)
-        structural_similarity_score = 0.0
-        if similar_scams:
-            # If we found similar scams, assume some similarity
-            # In a more advanced implementation, this would come from embedding distances
-            structural_similarity_score = 0.5
+
+        # Compute structural similarity score from actual cosine distances
+        if distances:
+            best_distance = min(distances)   # cosine distance: 0 = identical, 2 = opposite
+            structural_similarity_score = max(0.0, 1.0 - best_distance / 2.0)
+        else:
+            structural_similarity_score = 0.0
         
         return {
             "urgency_score": analysis["urgency_score"],
