@@ -31,20 +31,32 @@ export interface AnalysisResponse {
   authenticity_confidence_score?: number;
   // ── Agent 4 explainer ──
   recommendation?: string;
+  // ── Agent 5 honeypot ──
+  honeypot_active?: boolean;
+  honeypot_conversation?: Array<{ role: string; text: string }>;
+  harvested_artifacts?: string[];
 }
 
 export async function analyzeMessage(message: string): Promise<AnalysisResponse> {
   const response = await fetch("/api/analyze", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
-
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
+  return response.json();
+}
 
+export async function startHoneypot(analysis: AnalysisResponse): Promise<AnalysisResponse> {
+  const response = await fetch("/api/honeypot/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ analysis }),
+  });
+  if (!response.ok) {
+    throw new Error(`Honeypot API error: ${response.status} ${response.statusText}`);
+  }
   return response.json();
 }

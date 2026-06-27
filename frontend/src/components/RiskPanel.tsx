@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import type { AnalysisResponse } from "../api";
+import { startHoneypot } from "../api";
+import HoneypotChat from "./HoneypotChat";
 
 interface RiskPanelProps {
   analysis: AnalysisResponse | null;
@@ -57,6 +59,28 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
   const [showPii, setShowPii] = useState(false);
   const [showVerification, setShowVerification] = useState(true);
 
+  // ── Honeypot state ───────────────────────────────────
+  const [honeypotLoading, setHoneypotLoading] = useState(false);
+  const [honeypotError, setHoneypotError] = useState<string | null>(null);
+  const [conversation, setConversation] = useState<Array<{ role: string; text: string }>>([]);
+  const [harvested, setHarvested] = useState<string[]>([]);
+
+  const handleConfirmThreat = async () => {
+    if (!analysis) return;
+    setHoneypotLoading(true);
+    setHoneypotError(null);
+    try {
+      const result = await startHoneypot(analysis);
+      setConversation(result.honeypot_conversation || []);
+      setHarvested(result.harvested_artifacts || []);
+    } catch (err) {
+      setHoneypotError(err instanceof Error ? err.message : "Honeypot failed");
+    } finally {
+      setHoneypotLoading(false);
+    }
+    onConfirmThreat();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -86,6 +110,37 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
           Select a message from the inbox to view the risk analysis report.
         </p>
       </div>
+    );
+  }
+
+  // ── Honeypot: loading ────────────────────────────────
+  if (honeypotLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center px-6">
+          <div className="animate-spin rounded-full h-10 w-10 border-[3px] border-red-200 border-b-red-500 mx-auto mb-4" />
+          <p className="text-sm font-semibold text-red-700">Honeypot engaging scammer…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Honeypot: error ──────────────────────────────────
+  if (honeypotError) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <h3 className="text-sm font-bold text-red-800 mb-1">Honeypot Error</h3>
+          <p className="text-sm text-red-700">{honeypotError}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Honeypot: active conversation ────────────────────
+  if (conversation.length > 0) {
+    return (
+      <HoneypotChat conversation={conversation} artifacts={harvested} />
     );
   }
 
@@ -278,7 +333,7 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
         <hr className="border-gray-200" />
         {isThreat ? (
           <div className="space-y-2.5">
-            <button onClick={onConfirmThreat} className="w-full py-2.5 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition">Confirm Threat</button>
+            <button onClick={handleConfirmThreat} className="w-full py-2.5 rounded-lg text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition">Confirm Threat</button>
             <button onClick={onFalsePositive} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 transition">Flag False Positive</button>
             <button onClick={onDismiss} className="w-full py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 transition">Dismiss</button>
           </div>
