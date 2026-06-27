@@ -41,7 +41,7 @@ def run_agent(state: PipelineState) -> dict:
         elif composite_risk_score > 0.3:
             recommendation = "Do Not Engage"
         else:
-            recommendation = "Proceed with Caution"
+            recommendation = "No threat detected"
         
         return {
             "composite_risk_score": composite_risk_score,

@@ -59,6 +59,48 @@ const DEMO_MESSAGES: Array<{
     type: "whatsapp",
     body: "Hey! Are we still meeting at the library tomorrow at 2 for the group project? Sevin said he might be late but Senith confirmed. I booked discussion room 3 on the second floor.\n\nAlso did you finish the literature review section? We need to merge everything by Thursday 😅",
   },
+  {
+    sender: "registrar@university.ac.lk",
+    subject: "Exam Schedule Update - Please Review",
+    type: "email",
+    body: "Dear Student,\n\nPlease review the attached revised examination timetable for the upcoming semester. There have been a few minor room changes due to venue maintenance.\n\nIf you have any timetable clashes, reply to this message with your student ID and we will review the case.\n\nKind regards,\nOffice of the Registrar",
+  },
+  {
+    sender: "Amin",
+    subject: "",
+    type: "whatsapp",
+    body: "Hey, I left the notes with you after class right? Can you send me the PDF before 6pm? I need to revise a few sections before the quiz tomorrow.",
+  },
+  {
+    sender: "hr@global-support.com",
+    subject: "Action Required: Payroll Verification",
+    type: "email",
+    body: "Hello,\n\nWe are updating employee payroll records and need you to verify your banking details before Friday. Please open the secure form and confirm your account number.\n\nFailure to complete this step may delay salary processing.\n\nRegards,\nHR Services",
+  },
+  {
+    sender: "+94 76 555 0199",
+    subject: "",
+    type: "whatsapp",
+    body: "Hi, this is the delivery team. We missed you at the address. Please tap this link to reschedule your parcel: http://parcel-track-support.com/rebook",
+  },
+  {
+    sender: "ceo.office@techcorp-support.co",
+    subject: "Please Handle This Privately",
+    type: "email",
+    body: "I need you to help me process a confidential invoice today. It is sensitive and I don't want the rest of the team looped in yet. Reply as soon as you see this and I'll send the transfer details.",
+  },
+  {
+    sender: "DeliveryBot",
+    subject: "",
+    type: "whatsapp",
+    body: "Your package has been held at customs. Confirm your delivery address and pay the release fee using the secure link in our next message.",
+  },
+  {
+    sender: "library@campus.lk",
+    subject: "New Study Room Booking Confirmation",
+    type: "email",
+    body: "Hello,\n\nYour study room booking for tomorrow has been confirmed. The reservation is under your name from 2:00 PM to 4:00 PM.\n\nPlease arrive five minutes early so we can check you in.\n\nBest,\nCampus Library",
+  },
 ];
 
 function App() {
@@ -71,7 +113,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [demoRunning, setDemoRunning] = useState(false);
   const [honeypotActive, setHoneypotActive] = useState(false);
-  const [agentsComplete, setAgentsComplete] = useState<Set<number>>(new Set());
+  const [, setAgentsComplete] = useState<Set<number>>(new Set());
   const [riskTiers, setRiskTiers] = useState<Map<string, string>>(new Map());
   const demoIndexRef = useRef(0);
   const demoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -296,10 +338,10 @@ function App() {
             analysis={analysis}
             loading={loading}
             error={error}
-            agentsComplete={agentsComplete}
             onConfirmThreat={handleConfirmThreat}
             onFalsePositive={handleFalsePositive}
             onHoneypotActive={setHoneypotActive}
+            onBackToAnalysis={() => setHoneypotActive(false)}
           />
         </div>
       </div>

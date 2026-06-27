@@ -9,8 +9,8 @@ interface RiskPanelProps {
   error: string | null;
   onConfirmThreat: () => void;
   onFalsePositive: () => void;
-  onDismiss: () => void;
   onHoneypotActive: (active: boolean) => void;
+  onBackToAnalysis: () => void;
 }
 
 // ── Color helpers ──
@@ -56,7 +56,7 @@ const DangerBar: React.FC<{ pct: number }> = ({ pct }) => {
 };
 
 const RiskPanel: React.FC<RiskPanelProps> = ({
-  analysis, loading, error, onConfirmThreat, onFalsePositive, onDismiss, onHoneypotActive,
+  analysis, loading, error, onConfirmThreat, onFalsePositive, onHoneypotActive, onBackToAnalysis,
 }) => {
   const [showPii, setShowPii] = useState(false);
   const [showVerification, setShowVerification] = useState(true);
@@ -65,22 +65,44 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
   const [honeypotStreaming, setHoneypotStreaming] = useState(false);
   const [honeypotComplete, setHoneypotComplete] = useState(false);
   const [honeypotError, setHoneypotError] = useState<string | null>(null);
+  const [threatConfirmed, setThreatConfirmed] = useState(false);
   const [conversation, setConversation] = useState<Array<{ role: string; text: string }>>([]);
-  const [harvested, setHarvested] = useState<string[]>([]);
+  const [harvested, setHarvested] = useState<Array<{ type: string; value: string }>>([]);
+  const streamTokenRef = React.useRef(0);
 
-  const handleConfirmThreat = async () => {
+  const resetHoneypot = () => {
+    streamTokenRef.current += 1;
+    setHoneypotStreaming(false);
+    setHoneypotComplete(false);
+    setHoneypotError(null);
+    setThreatConfirmed(false);
+    setConversation([]);
+    setHarvested([]);
+    onHoneypotActive(false);
+    onBackToAnalysis();
+  };
+
+  const handleConfirmThreat = () => {
     if (!analysis) return;
+    setThreatConfirmed(true);
+    onConfirmThreat();
+  };
+
+  const handleDeployHoneypot = async () => {
+    if (!analysis) return;
+    const token = streamTokenRef.current + 1;
+    streamTokenRef.current = token;
     setHoneypotStreaming(true);
     setHoneypotComplete(false);
     setHoneypotError(null);
     setConversation([]);
     setHarvested([]);
     onHoneypotActive(true);
-    onConfirmThreat();
 
     await streamHoneypot(
       analysis,
       (event: HoneypotStreamEvent) => {
+        if (streamTokenRef.current !== token) return;
         if (event.type === "message" && event.role && event.text) {
           setConversation((prev) => [...prev, { role: event.role!, text: event.text! }]);
         } else if (event.type === "artifact" && event.artifacts) {
@@ -92,6 +114,7 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
         }
       },
       (err: Error) => {
+        if (streamTokenRef.current !== token) return;
         setHoneypotError(err.message);
         setHoneypotStreaming(false);
       },
@@ -151,6 +174,12 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
         <div className="glass-card gradient-danger p-4 border-red-500/20">
           <h3 className="text-sm font-bold text-red-400 mb-1">Honeypot Error</h3>
           <p className="text-sm text-red-300/80">{honeypotError}</p>
+          <button
+            onClick={resetHoneypot}
+            className="mt-3 w-full py-2 rounded-xl text-sm font-semibold text-red-200 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition"
+          >
+            Back to analysis
+          </button>
         </div>
       </div>
     );
@@ -164,6 +193,7 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
         artifacts={harvested}
         isStreaming={honeypotStreaming}
         isComplete={honeypotComplete}
+        onBack={resetHoneypot}
       />
     );
   }
@@ -177,7 +207,6 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="p-5 space-y-4">
-
         {/* ═══ Agent 4: Final Verdict ═══ */}
         <div className="fade-in">
           <div className="flex items-center gap-2 mb-2">
@@ -316,16 +345,6 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
           </div>
         </div>
 
-        {/* ═══ Agent 1: Ingestion Summary ═══ */}
-        <div className="fade-in" style={{ animationDelay: "0.25s" }}>
-          <AgentBadge id={1} label="Ingestion" />
-          <div className="mt-2 glass-card p-3 space-y-1.5 text-xs">
-            <div className="flex justify-between"><span className="text-slate-400">Sender</span><span className="text-slate-200 font-mono text-[11px]">{analysis.sender || "—"}</span></div>
-            <div className="flex justify-between"><span className="text-slate-400">Subject</span><span className="text-slate-200 truncate max-w-[180px]">{analysis.subject || "—"}</span></div>
-            <div className="flex justify-between"><span className="text-slate-400">Request ID</span><span className="text-slate-500 font-mono text-[10px]">{analysis.request_id?.slice(0, 12)}…</span></div>
-          </div>
-        </div>
-
         {/* ═══ PII Privacy Toggle ═══ */}
         {analysis.is_anonymized && (
           <div className="fade-in" style={{ animationDelay: "0.3s" }}>
@@ -365,21 +384,26 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
             <>
               <button
                 onClick={handleConfirmThreat}
+                disabled={threatConfirmed}
                 className="w-full py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 transition-all duration-300 shadow-lg shadow-red-900/30 hover:shadow-red-900/50 active:scale-[0.98]"
               >
-                🎯 Confirm Threat · Deploy Honeypot
+                {threatConfirmed ? "Threat Confirmed" : "Confirm Threat"}
               </button>
+              {analysis.composite_risk_score > 0.7 && (
+                <button
+                  onClick={handleDeployHoneypot}
+                  disabled={!threatConfirmed || honeypotStreaming}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-red-200 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Deploy Honeypot
+                </button>
+              )}
               <button
                 onClick={onFalsePositive}
+                disabled={honeypotStreaming}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/25 hover:bg-amber-500/20 transition-all duration-300"
               >
                 Flag False Positive
-              </button>
-              <button
-                onClick={onDismiss}
-                className="w-full py-2.5 rounded-xl text-sm font-medium text-slate-400 bg-slate-800/50 border border-slate-700/50 hover:bg-slate-700/50 transition-all duration-300"
-              >
-                Dismiss
               </button>
             </>
           ) : (
@@ -388,11 +412,8 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
                 <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                 </svg>
-                <span className="text-xs font-medium text-emerald-300">No threat detected — no action needed</span>
+                <span className="text-xs font-medium text-emerald-300">No threat detected</span>
               </div>
-              <button onClick={onDismiss} className="w-full py-2.5 rounded-xl text-sm font-medium text-slate-400 bg-slate-800/50 border border-slate-700/50 hover:bg-slate-700/50 transition-all duration-300">
-                Dismiss
-              </button>
             </>
           )}
         </div>

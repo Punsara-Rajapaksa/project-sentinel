@@ -70,12 +70,50 @@ export async function streamAnalysis(
   onComplete: (fullResult: AnalysisResponse) => void,
   onError: (error: Error) => void,
 ): Promise<void> {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const simulateProgress = async (fullResult: AnalysisResponse) => {
+    onAgent(1, "Ingestion", {
+      sender: fullResult.sender,
+      subject: fullResult.subject,
+      body: fullResult.body,
+      is_anonymized: fullResult.is_anonymized,
+      request_id: fullResult.request_id,
+    });
+    await sleep(140);
+    onAgent(2, "Semantic Risk", {
+      urgency_score: fullResult.urgency_score,
+      authority_manipulation_score: fullResult.authority_manipulation_score,
+      structural_similarity_score: fullResult.structural_similarity_score,
+      risk_assessment: fullResult.risk_assessment,
+      risk_factors: fullResult.risk_factors,
+      risk_tier: fullResult.risk_tier,
+    });
+    await sleep(140);
+    onAgent(3, "Verification", {
+      verification_details: fullResult.verification_details,
+      authenticity_confidence_score: fullResult.authenticity_confidence_score,
+    });
+    await sleep(140);
+    onAgent(4, "Explainer", {
+      composite_risk_score: fullResult.composite_risk_score,
+      recommendation: fullResult.recommendation,
+      risk_tier: fullResult.risk_tier,
+    });
+    onComplete(fullResult);
+  };
+
   try {
     const response = await fetch("/api/analyze/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message }),
     });
+    if (response.status === 404) {
+      const fullResult = await analyzeMessage(message);
+      await simulateProgress(fullResult);
+      return;
+    }
     if (!response.ok) throw new Error(`Stream error: ${response.status}`);
 
     const reader = response.body?.getReader();
@@ -105,8 +143,25 @@ export async function streamAnalysis(
         }
       }
     }
+
+    if (buffer.trim().startsWith("data: ")) {
+      try {
+        const event: AnalysisStreamEvent = JSON.parse(buffer.trim().slice(6));
+        if (event.agent === "done") {
+          onComplete(event.data as AnalysisResponse);
+        } else if (typeof event.agent === "number") {
+          onAgent(event.agent, event.label || "", event.data);
+        }
+      } catch { /* skip */ }
+    }
   } catch (err) {
-    onError(err instanceof Error ? err : new Error(String(err)));
+    try {
+      const fullResult = await analyzeMessage(message);
+      await simulateProgress(fullResult);
+    } catch (fallbackErr) {
+      onError(fallbackErr instanceof Error ? fallbackErr : new Error(String(fallbackErr)));
+      return;
+    }
   }
 }
 
