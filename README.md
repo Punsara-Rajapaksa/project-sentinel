@@ -47,7 +47,6 @@ Ingestion Agent → Semantic Risk Agent → Verification Agent → Explainer Age
 
 ## 📁 Repository Structure
 
----
 project-sentinel/
 ├── backend/
 │ ├── app/
@@ -71,9 +70,6 @@ project-sentinel/
 ├── report/ # Project evaluation report (PDF)
 ├── .gitignore
 └── README.md
-
-
----
 
 ## 🚀 Getting Started
 
