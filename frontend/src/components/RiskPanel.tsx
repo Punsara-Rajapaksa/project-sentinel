@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import type { AnalysisResponse, HoneypotStreamEvent } from "../api";
-import { streamHoneypot } from "../api";
+import type { AnalysisResponse, HoneypotArtifact } from "../api";
 import HoneypotChat from "./HoneypotChat";
 
 interface RiskPanelProps {
@@ -9,8 +8,16 @@ interface RiskPanelProps {
   error: string | null;
   onConfirmThreat: () => void;
   onFalsePositive: () => void;
-  onHoneypotActive: (active: boolean) => void;
-  onBackToAnalysis: () => void;
+  // ── Per-message honeypot state (lifted from App) ──
+  honeypotConversation: Array<{ role: string; text: string }>;
+  honeypotArtifacts: HoneypotArtifact[];
+  honeypotStreaming: boolean;
+  honeypotComplete: boolean;
+  honeypotError: string | null;
+  threatConfirmed: boolean;
+  onDeployHoneypot: () => void;
+  onResetHoneypot: () => void;
+  onBackFromHoneypot: () => void;
 }
 
 // ── Color helpers ──
@@ -56,69 +63,17 @@ const DangerBar: React.FC<{ pct: number }> = ({ pct }) => {
 };
 
 const RiskPanel: React.FC<RiskPanelProps> = ({
-  analysis, loading, error, onConfirmThreat, onFalsePositive, onHoneypotActive, onBackToAnalysis,
+  analysis, loading, error, onConfirmThreat, onFalsePositive,
+  honeypotConversation, honeypotArtifacts, honeypotStreaming, honeypotComplete, honeypotError,
+  threatConfirmed, onDeployHoneypot, onResetHoneypot, onBackFromHoneypot,
 }) => {
   const [showPii, setShowPii] = useState(false);
-  const [showVerification, setShowVerification] = useState(true);
-
-  // ── Honeypot streaming state ──
-  const [honeypotStreaming, setHoneypotStreaming] = useState(false);
-  const [honeypotComplete, setHoneypotComplete] = useState(false);
-  const [honeypotError, setHoneypotError] = useState<string | null>(null);
-  const [threatConfirmed, setThreatConfirmed] = useState(false);
-  const [conversation, setConversation] = useState<Array<{ role: string; text: string }>>([]);
-  const [harvested, setHarvested] = useState<Array<{ type: string; value: string }>>([]);
-  const streamTokenRef = React.useRef(0);
-
-  const resetHoneypot = () => {
-    streamTokenRef.current += 1;
-    setHoneypotStreaming(false);
-    setHoneypotComplete(false);
-    setHoneypotError(null);
-    setThreatConfirmed(false);
-    setConversation([]);
-    setHarvested([]);
-    onHoneypotActive(false);
-    onBackToAnalysis();
-  };
+  // ── Agent overlay state ──
+  const [agentOverlay, setAgentOverlay] = useState<"a2" | "a3" | null>(null);
 
   const handleConfirmThreat = () => {
     if (!analysis) return;
-    setThreatConfirmed(true);
     onConfirmThreat();
-  };
-
-  const handleDeployHoneypot = async () => {
-    if (!analysis) return;
-    const token = streamTokenRef.current + 1;
-    streamTokenRef.current = token;
-    setHoneypotStreaming(true);
-    setHoneypotComplete(false);
-    setHoneypotError(null);
-    setConversation([]);
-    setHarvested([]);
-    onHoneypotActive(true);
-
-    await streamHoneypot(
-      analysis,
-      (event: HoneypotStreamEvent) => {
-        if (streamTokenRef.current !== token) return;
-        if (event.type === "message" && event.role && event.text) {
-          setConversation((prev) => [...prev, { role: event.role!, text: event.text! }]);
-        } else if (event.type === "artifact" && event.artifacts) {
-          setHarvested(event.artifacts);
-        } else if (event.type === "done") {
-          setHoneypotComplete(true);
-          setHoneypotStreaming(false);
-          if (event.artifacts) setHarvested(event.artifacts);
-        }
-      },
-      (err: Error) => {
-        if (streamTokenRef.current !== token) return;
-        setHoneypotError(err.message);
-        setHoneypotStreaming(false);
-      },
-    );
   };
 
   // ── Loading State ──
@@ -175,7 +130,7 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
           <h3 className="text-sm font-bold text-red-400 mb-1">Honeypot Error</h3>
           <p className="text-sm text-red-300/80">{honeypotError}</p>
           <button
-            onClick={resetHoneypot}
+            onClick={onResetHoneypot}
             className="mt-3 w-full py-2 rounded-xl text-sm font-semibold text-red-200 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition"
           >
             Back to analysis
@@ -186,14 +141,14 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
   }
 
   // ── Honeypot Active (streaming or complete) ──
-  if (conversation.length > 0 || honeypotStreaming) {
+  if (honeypotConversation.length > 0 || honeypotStreaming) {
     return (
       <HoneypotChat
-        conversation={conversation}
-        artifacts={harvested}
+        conversation={honeypotConversation}
+        artifacts={honeypotArtifacts}
         isStreaming={honeypotStreaming}
         isComplete={honeypotComplete}
-        onBack={resetHoneypot}
+        onBack={onBackFromHoneypot}
       />
     );
   }
@@ -203,6 +158,148 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
   const isThreat = tier === "High" || tier === "Medium";
   const rec = analysis.recommendation || "";
   const vd = analysis.verification_details;
+
+  // ── Agent 2 Overlay ──
+  if (agentOverlay === "a2") {
+    return (
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-5 space-y-4">
+          {/* Back button */}
+          <button
+            onClick={() => setAgentOverlay(null)}
+            className="flex items-center gap-2 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition mb-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Analysis
+          </button>
+
+          {/* Agent 2 Header */}
+          <div className="fade-in">
+            <div className="flex items-center gap-2 mb-2">
+              <AgentBadge id={2} label="Semantic" />
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Behavioral Analysis</span>
+            </div>
+            <div className="glass-card p-4 space-y-3 glow-cyan">
+              <div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400 font-medium">Urgency Pressure</span>
+                  <span className="text-slate-200 font-semibold">{safePct(analysis.urgency_score)}</span>
+                </div>
+                <DangerBar pct={safeNum(analysis.urgency_score)} />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400 font-medium">Authority Manipulation</span>
+                  <span className="text-slate-200 font-semibold">{safePct(analysis.authority_manipulation_score)}</span>
+                </div>
+                <DangerBar pct={safeNum(analysis.authority_manipulation_score)} />
+              </div>
+              <div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400 font-medium">Known-Scam Similarity</span>
+                  <span className="text-slate-200 font-semibold">{safePct(analysis.structural_similarity_score)}</span>
+                </div>
+                <DangerBar pct={safeNum(analysis.structural_similarity_score)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Assessment */}
+          <div className="fade-in" style={{ animationDelay: "0.1s" }}>
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Assessment</h4>
+            <p className="text-sm text-slate-300 leading-relaxed glass-card-light p-3">
+              {analysis.risk_assessment || "No assessment available."}
+            </p>
+          </div>
+
+          {/* Risk Factors */}
+          {analysis.risk_factors && analysis.risk_factors.length > 0 && (
+            <div className="fade-in" style={{ animationDelay: "0.15s" }}>
+              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Risk Factors</h4>
+              <ul className="space-y-1.5">
+                {analysis.risk_factors.map((f, i) => (
+                  <li key={i} className="flex gap-2 text-sm text-amber-200/80 bg-amber-500/8 rounded-lg px-3 py-2 border border-amber-500/15">
+                    <span className="text-amber-400 font-bold flex-shrink-0">⚠</span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Agent 3 Overlay ──
+  if (agentOverlay === "a3") {
+    return (
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-5 space-y-4">
+          {/* Back button */}
+          <button
+            onClick={() => setAgentOverlay(null)}
+            className="flex items-center gap-2 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition mb-2"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Analysis
+          </button>
+
+          {/* Agent 3 Header */}
+          <div className="fade-in">
+            <div className="flex items-center gap-2 mb-2">
+              <AgentBadge id={3} label="OSINT" />
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Technical Verification</span>
+            </div>
+            {vd ? (
+              <div className="glass-card p-4 space-y-2.5 text-xs glow-cyan">
+                <div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Sender Authenticity</span>
+                    <span className={`font-semibold ${
+                      safeNum(analysis.authenticity_confidence_score) < 0.4 ? "text-red-400" :
+                      safeNum(analysis.authenticity_confidence_score) < 0.7 ? "text-amber-400" : "text-emerald-400"
+                    }`}>
+                      {safePct(analysis.authenticity_confidence_score)}
+                    </span>
+                  </div>
+                  <DangerBar pct={safeNum(analysis.authenticity_confidence_score)} />
+                </div>
+                <hr className="border-slate-700/50" />
+                {vd.domain && (
+                  <div className="flex justify-between"><span className="text-slate-400">Domain</span><span className="text-slate-200 font-mono text-[11px]">{vd.domain}</span></div>
+                )}
+                {vd.domain_age_days != null && (
+                  <div className="flex justify-between"><span className="text-slate-400">Domain Age</span><span className={`font-semibold ${vd.domain_age_days < 90 ? "text-red-400" : "text-emerald-400"}`}>{vd.domain_age_days} days</span></div>
+                )}
+                <div className="flex justify-between"><span className="text-slate-400">SPF Record</span><span className={`font-semibold ${vd.spf_valid ? "text-emerald-400" : "text-red-400"}`}>{vd.spf_valid ? "✓ Valid" : "✗ Invalid"}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">DKIM Record</span><span className={`font-semibold ${vd.dkim_valid ? "text-emerald-400" : "text-red-400"}`}>{vd.dkim_valid ? "✓ Valid" : "✗ Invalid"}</span></div>
+                {vd.typosquatting_detected && (
+                  <div className="flex justify-between"><span className="text-slate-400">Typosquatting</span><span className="text-red-400 font-semibold">⚠ Detected</span></div>
+                )}
+                {vd.malicious_urls && vd.malicious_urls.length > 0 && (
+                  <div>
+                    <span className="text-slate-400 block mb-1">Suspicious URLs</span>
+                    {vd.malicious_urls.map((url, i) => (
+                      <div key={i} className="text-red-400 font-mono break-all bg-red-500/10 rounded px-2 py-1 mt-1 text-[11px] border border-red-500/15">{url}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="glass-card p-4 text-center">
+                <p className="text-sm text-slate-500">No verification details available for this message.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -233,13 +330,17 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
           </div>
         </div>
 
-        {/* ═══ Agent 2: Semantic Risk Scores ═══ */}
+        {/* ═══ Agent 2: Semantic Risk Scores (clickable) ═══ */}
         <div className="fade-in" style={{ animationDelay: "0.1s" }}>
-          <div className="flex items-center gap-2 mb-2">
+          <button
+            onClick={() => setAgentOverlay("a2")}
+            className="w-full flex items-center gap-2 mb-2 text-left group"
+          >
             <AgentBadge id={2} label="Semantic" />
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Behavioral Analysis</span>
-          </div>
-          <div className="glass-card p-4 space-y-3">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold flex-1">Behavioral Analysis</span>
+            <span className="text-[10px] text-cyan-400/60 opacity-0 group-hover:opacity-100 transition-opacity font-medium">View details →</span>
+          </button>
+          <div className="glass-card p-4 space-y-3 cursor-pointer hover:border-cyan-500/30 transition-colors" onClick={() => setAgentOverlay("a2")}>
             <div>
               <div className="flex justify-between text-xs">
                 <span className="text-slate-400 font-medium">Urgency Pressure</span>
@@ -264,86 +365,53 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
           </div>
         </div>
 
-        {/* ═══ Agent 3: Verification ═══ */}
+        {/* ═══ Agent 3: Verification (clickable) ═══ */}
         {vd && (
           <div className="fade-in" style={{ animationDelay: "0.15s" }}>
-            <button onClick={() => setShowVerification(!showVerification)} className="w-full flex items-center gap-2 mb-2 text-left">
+            <button
+              onClick={() => setAgentOverlay("a3")}
+              className="w-full flex items-center gap-2 mb-2 text-left group"
+            >
               <AgentBadge id={3} label="OSINT" />
               <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold flex-1">Technical Verification</span>
-              <svg
-                className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-300 ${showVerification ? "rotate-180" : ""}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
+              <span className="text-[10px] text-cyan-400/60 opacity-0 group-hover:opacity-100 transition-opacity font-medium">View details →</span>
             </button>
-            {showVerification && (
-              <div className="glass-card p-4 space-y-2.5 text-xs">
-                {/* Authenticity bar */}
-                <div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Sender Authenticity</span>
-                    <span className={`font-semibold ${
-                      safeNum(analysis.authenticity_confidence_score) < 0.4 ? "text-red-400" :
-                      safeNum(analysis.authenticity_confidence_score) < 0.7 ? "text-amber-400" : "text-emerald-400"
-                    }`}>
-                      {safePct(analysis.authenticity_confidence_score)}
-                    </span>
-                  </div>
-                  <DangerBar pct={safeNum(analysis.authenticity_confidence_score)} />
+            <div className="glass-card p-4 space-y-2.5 text-xs cursor-pointer hover:border-cyan-500/30 transition-colors" onClick={() => setAgentOverlay("a3")}>
+              <div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Sender Authenticity</span>
+                  <span className={`font-semibold ${
+                    safeNum(analysis.authenticity_confidence_score) < 0.4 ? "text-red-400" :
+                    safeNum(analysis.authenticity_confidence_score) < 0.7 ? "text-amber-400" : "text-emerald-400"
+                  }`}>
+                    {safePct(analysis.authenticity_confidence_score)}
+                  </span>
                 </div>
-                <hr className="border-slate-700/50" />
-                {vd.domain && (
-                  <div className="flex justify-between"><span className="text-slate-400">Domain</span><span className="text-slate-200 font-mono text-[11px]">{vd.domain}</span></div>
-                )}
-                {vd.domain_age_days != null && (
-                  <div className="flex justify-between"><span className="text-slate-400">Domain Age</span><span className={`font-semibold ${vd.domain_age_days < 90 ? "text-red-400" : "text-emerald-400"}`}>{vd.domain_age_days} days</span></div>
-                )}
-                <div className="flex justify-between"><span className="text-slate-400">SPF Record</span><span className={`font-semibold ${vd.spf_valid ? "text-emerald-400" : "text-red-400"}`}>{vd.spf_valid ? "✓ Valid" : "✗ Invalid"}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">DKIM Record</span><span className={`font-semibold ${vd.dkim_valid ? "text-emerald-400" : "text-red-400"}`}>{vd.dkim_valid ? "✓ Valid" : "✗ Invalid"}</span></div>
-                {vd.typosquatting_detected && (
-                  <div className="flex justify-between"><span className="text-slate-400">Typosquatting</span><span className="text-red-400 font-semibold">⚠ Detected</span></div>
-                )}
-                {vd.malicious_urls && vd.malicious_urls.length > 0 && (
-                  <div>
-                    <span className="text-slate-400 block mb-1">Suspicious URLs</span>
-                    {vd.malicious_urls.map((url, i) => (
-                      <div key={i} className="text-red-400 font-mono truncate bg-red-500/10 rounded px-2 py-1 mt-1 text-[11px] border border-red-500/15">{url}</div>
-                    ))}
-                  </div>
-                )}
+                <DangerBar pct={safeNum(analysis.authenticity_confidence_score)} />
               </div>
-            )}
+              <hr className="border-slate-700/50" />
+              {vd.domain && (
+                <div className="flex justify-between"><span className="text-slate-400">Domain</span><span className="text-slate-200 font-mono text-[11px]">{vd.domain}</span></div>
+              )}
+              {vd.domain_age_days != null && (
+                <div className="flex justify-between"><span className="text-slate-400">Domain Age</span><span className={`font-semibold ${vd.domain_age_days < 90 ? "text-red-400" : "text-emerald-400"}`}>{vd.domain_age_days} days</span></div>
+              )}
+              <div className="flex justify-between"><span className="text-slate-400">SPF Record</span><span className={`font-semibold ${vd.spf_valid ? "text-emerald-400" : "text-red-400"}`}>{vd.spf_valid ? "✓ Valid" : "✗ Invalid"}</span></div>
+              <div className="flex justify-between"><span className="text-slate-400">DKIM Record</span><span className={`font-semibold ${vd.dkim_valid ? "text-emerald-400" : "text-red-400"}`}>{vd.dkim_valid ? "✓ Valid" : "✗ Invalid"}</span></div>
+              {vd.typosquatting_detected && (
+                <div className="flex justify-between"><span className="text-slate-400">Typosquatting</span><span className="text-red-400 font-semibold">⚠ Detected</span></div>
+              )}
+              {vd.malicious_urls && vd.malicious_urls.length > 0 && (
+                <div>
+                  <span className="text-slate-400 block mb-1">Suspicious URLs</span>
+                  {vd.malicious_urls.map((url, i) => (
+                    <div key={i} className="text-red-400 font-mono truncate bg-red-500/10 rounded px-2 py-1 mt-1 text-[11px] border border-red-500/15">{url}</div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
-
-        {/* ═══ Agent 2: Assessment + Risk Factors ═══ */}
-        <div className="fade-in" style={{ animationDelay: "0.2s" }}>
-          <div className="mb-2">
-            <AgentBadge id={2} label="Semantic" />
-          </div>
-          <div className="space-y-3">
-            <div>
-              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Assessment</h4>
-              <p className="text-sm text-slate-300 leading-relaxed glass-card-light p-3">
-                {analysis.risk_assessment || "No assessment available."}
-              </p>
-            </div>
-            {analysis.risk_factors && analysis.risk_factors.length > 0 && (
-              <div>
-                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Risk Factors</h4>
-                <ul className="space-y-1.5">
-                  {analysis.risk_factors.map((f, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-amber-200/80 bg-amber-500/8 rounded-lg px-3 py-2 border border-amber-500/15">
-                      <span className="text-amber-400 font-bold flex-shrink-0">⚠</span>
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* ═══ PII Privacy Toggle ═══ */}
         {analysis.is_anonymized && (
@@ -391,7 +459,7 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
               </button>
               {analysis.composite_risk_score > 0.7 && (
                 <button
-                  onClick={handleDeployHoneypot}
+                  onClick={onDeployHoneypot}
                   disabled={!threatConfirmed || honeypotStreaming}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold text-red-200 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
                 >

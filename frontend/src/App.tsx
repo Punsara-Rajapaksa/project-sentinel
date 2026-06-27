@@ -3,8 +3,8 @@ import type { Message } from "./components/InboxSidebar";
 import InboxSidebar from "./components/InboxSidebar";
 import MessageView from "./components/MessageView";
 import RiskPanel from "./components/RiskPanel";
-import { analyzeMessage, streamAnalysis } from "./api";
-import type { AnalysisResponse } from "./api";
+import { analyzeMessage, streamAnalysis, streamHoneypot } from "./api";
+import type { AnalysisResponse, HoneypotStreamEvent, HoneypotArtifact } from "./api";
 import "./App.css";
 
 // ── Demo Messages — mix of email and WhatsApp ─────
@@ -119,7 +119,34 @@ function App() {
   const demoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const analysisCache = useRef<Map<string, AnalysisResponse>>(new Map());
 
+  // ── Per-message honeypot state (persists across message switches) ──
+  const [honeypotStates, setHoneypotStates] = useState<Map<string, {
+    conversation: Array<{ role: string; text: string }>;
+    artifacts: HoneypotArtifact[];
+    streaming: boolean;
+    complete: boolean;
+    error: string | null;
+    threatConfirmed: boolean;
+  }>>(new Map());
+  const honeypotStreamTokenRef = useRef<Map<string, number>>(new Map());
+  const honeypotStatesRef = useRef<Map<string, {
+    conversation: Array<{ role: string; text: string }>;
+    artifacts: HoneypotArtifact[];
+    streaming: boolean;
+    complete: boolean;
+    error: string | null;
+    threatConfirmed: boolean;
+  }>>(new Map());
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    honeypotStatesRef.current = honeypotStates;
+  }, [honeypotStates]);
+
   const selectedMessage = messages.find((m) => m.id === selectedId) || null;
+
+  // Get current message's honeypot state
+  const currentHoneypot = selectedId ? honeypotStates.get(selectedId) : undefined;
 
   const dismissIntro = () => {
     setIntroFading(true);
@@ -140,7 +167,6 @@ function App() {
     setLoading(true);
     setError(null);
     setAnalysis(null);
-    setHoneypotActive(false);
     setAgentsComplete(new Set());
 
     await streamAnalysis(
@@ -154,7 +180,6 @@ function App() {
         setAgentsComplete(new Set([1, 2, 3, 4]));
         analysisCache.current.set(msgId, fullResult);
         setLoading(false);
-        // Update risk tier for sidebar
         if (fullResult.risk_tier) {
           setRiskTiers((prev) => new Map(prev).set(msgId, fullResult.risk_tier));
         }
@@ -177,10 +202,95 @@ function App() {
     }
     const msg = messages.find((m) => m.id === selectedId);
     if (!msg) return;
-    // Reset honeypot when switching messages
-    setHoneypotActive(false);
+
+    // Check if this message has an active honeypot
+    const hpState = honeypotStates.get(selectedId);
+    if (hpState && (hpState.streaming || hpState.conversation.length > 0)) {
+      setHoneypotActive(true);
+    } else {
+      setHoneypotActive(false);
+    }
+
     runStreamingAnalysis(msg.id, msg.fullText);
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Honeypot actions ──
+  const handleConfirmThreat = useCallback(() => {
+    if (!selectedId) return;
+    setHoneypotStates((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(selectedId) || { conversation: [], artifacts: [], streaming: false, complete: false, error: null, threatConfirmed: false };
+      next.set(selectedId, { ...existing, threatConfirmed: true });
+      return next;
+    });
+    console.log("Threat confirmed:", analysis?.request_id);
+  }, [selectedId, analysis]);
+
+  const handleDeployHoneypot = useCallback(async () => {
+    if (!analysis || !selectedId) return;
+
+    // If there's already an ongoing/completed honeypot for this message, just show it
+    const existing = honeypotStatesRef.current.get(selectedId);
+    if (existing && (existing.conversation.length > 0 || existing.streaming)) {
+      setHoneypotActive(true);
+      return;
+    }
+
+    const token = (honeypotStreamTokenRef.current.get(selectedId) || 0) + 1;
+    honeypotStreamTokenRef.current.set(selectedId, token);
+
+    setHoneypotStates((prev) => {
+      const next = new Map(prev);
+      next.set(selectedId, { conversation: [], artifacts: [], streaming: true, complete: false, error: null, threatConfirmed: true });
+      return next;
+    });
+    setHoneypotActive(true);
+
+    await streamHoneypot(
+      analysis,
+      (event: HoneypotStreamEvent) => {
+        if (honeypotStreamTokenRef.current.get(selectedId) !== token) return;
+        setHoneypotStates((prev) => {
+          const next = new Map(prev);
+          const current = next.get(selectedId) || { conversation: [], artifacts: [], streaming: true, complete: false, error: null, threatConfirmed: true };
+          if (event.type === "message" && event.role && event.text) {
+            next.set(selectedId, { ...current, conversation: [...current.conversation, { role: event.role, text: event.text }] });
+          } else if (event.type === "artifact" && event.artifacts) {
+            next.set(selectedId, { ...current, artifacts: event.artifacts });
+          } else if (event.type === "done") {
+            next.set(selectedId, { ...current, streaming: false, complete: true, artifacts: event.artifacts || current.artifacts });
+          }
+          return next;
+        });
+      },
+      (err: Error) => {
+        if (honeypotStreamTokenRef.current.get(selectedId) !== token) return;
+        setHoneypotStates((prev) => {
+          const next = new Map(prev);
+          const current = next.get(selectedId) || { conversation: [], artifacts: [], streaming: false, complete: false, error: null, threatConfirmed: true };
+          next.set(selectedId, { ...current, streaming: false, error: err.message });
+          return next;
+        });
+      },
+    );
+  }, [analysis, selectedId]);
+
+  const handleResetHoneypot = useCallback(() => {
+    if (!selectedId) return;
+    honeypotStreamTokenRef.current.set(selectedId, (honeypotStreamTokenRef.current.get(selectedId) || 0) + 1);
+    setHoneypotStates((prev) => {
+      const next = new Map(prev);
+      next.delete(selectedId);
+      return next;
+    });
+    setHoneypotActive(false);
+  }, [selectedId]);
+
+  const handleBackFromHoneypot = useCallback(() => {
+    setHoneypotActive(false);
+  }, []);
+
+  const handleFalsePositive = () => console.log("False positive:", analysis?.request_id);
 
   // ── Demo ──
   const addDemoMessage = useCallback(() => {
@@ -221,11 +331,13 @@ function App() {
     if (demoRunning) return;
     setDemoRunning(true);
     setHoneypotActive(false);
+    setHoneypotStates(new Map());
+    honeypotStreamTokenRef.current.clear();
+    honeypotStatesRef.current = new Map();
     demoIndexRef.current = 0;
     setMessages([]);
     setRiskTiers(new Map());
     analysisCache.current.clear();
-    // Add first message immediately, then stagger
     addDemoMessage();
     demoIntervalRef.current = setInterval(addDemoMessage, 3500);
   }, [demoRunning, addDemoMessage]);
@@ -233,9 +345,6 @@ function App() {
   useEffect(() => () => {
     if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
   }, []);
-
-  const handleConfirmThreat = () => console.log("Threat confirmed:", analysis?.request_id);
-  const handleFalsePositive = () => console.log("False positive:", analysis?.request_id);
 
   // ── Intro Screen ──
   if (showIntro) {
@@ -340,8 +449,15 @@ function App() {
             error={error}
             onConfirmThreat={handleConfirmThreat}
             onFalsePositive={handleFalsePositive}
-            onHoneypotActive={setHoneypotActive}
-            onBackToAnalysis={() => setHoneypotActive(false)}
+            honeypotConversation={currentHoneypot?.conversation || []}
+            honeypotArtifacts={currentHoneypot?.artifacts || []}
+            honeypotStreaming={currentHoneypot?.streaming || false}
+            honeypotComplete={currentHoneypot?.complete || false}
+            honeypotError={currentHoneypot?.error || null}
+            threatConfirmed={currentHoneypot?.threatConfirmed || false}
+            onDeployHoneypot={handleDeployHoneypot}
+            onResetHoneypot={handleResetHoneypot}
+            onBackFromHoneypot={handleBackFromHoneypot}
           />
         </div>
       </div>

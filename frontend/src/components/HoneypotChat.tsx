@@ -75,10 +75,10 @@ const HoneypotChat: React.FC<HoneypotChatProps> = ({
                     isScammer ? "text-red-400/60" : "text-cyan-400/60 text-right"
                   }`}
                 >
-                  {isScammer ? "⚠ Scammer" : "🛡 Honeypot"}
+                  {isScammer ? "AI Agent" : "🛡 Honeypot"}
                 </span>
                 <div
-                  className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                  className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-all ${
                     isScammer
                       ? "bg-red-500/10 border border-red-500/20 text-red-100 rounded-tl-sm"
                       : "bg-cyan-500/15 border border-cyan-500/20 text-cyan-100 rounded-tr-sm"
@@ -130,7 +130,7 @@ const HoneypotChat: React.FC<HoneypotChatProps> = ({
                 <span className="text-red-400 mt-0.5 text-[10px]">◆</span>
                 <div className="flex flex-col gap-1 min-w-0">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-red-400/70">{a.type}</span>
-                  <code className="text-red-300 font-mono break-all bg-red-500/10 rounded px-2 py-1 border border-red-500/15 text-[11px]">
+                  <code className="text-red-300 font-mono break-all bg-red-500/10 rounded px-2 py-1 border border-red-500/15 text-[11px] max-w-full overflow-hidden">
                     {a.value}
                   </code>
                 </div>
