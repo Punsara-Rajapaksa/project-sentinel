@@ -63,25 +63,25 @@ cd project-sentinel
 ### 2. Backend Setup
 cd backend
 
-# Create and activate virtual environment
+#### Create and activate virtual environment
 python -m venv venv
-# Windows:
+#### Windows:
 venv\Scripts\activate
-# macOS/Linux:
+#### macOS/Linux:
 source venv/bin/activate
 
-# Install dependencies
+#### Install dependencies
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 
-# Configure environment variables
+#### Configure environment variables
 cp .env.example .env   # then edit .env with your API keys
 
-# Required environment variables (backend/.env):
-# For OpenRouter (recommended)
+#### Required environment variables (backend/.env):
+#### For OpenRouter (recommended)
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
 
-# Or for direct DeepSeek access
+#### Or for direct DeepSeek access
 DEEPSEEK_API_KEY=sk-your-key-here
 
 ### 3. Frontend Setup
