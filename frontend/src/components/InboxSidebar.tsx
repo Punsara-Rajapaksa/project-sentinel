@@ -1,4 +1,5 @@
 import React from "react";
+import { useEffect, useState } from "react";
 
 export interface Message {
   id: string;
@@ -6,19 +7,57 @@ export interface Message {
   subject: string;
   body: string;
   fullText: string;
+  type: "email" | "whatsapp";
 }
 
 interface InboxSidebarProps {
   messages: Message[];
   selectedId: string | null;
   onSelectMessage: (id: string) => void;
+  riskTiers: Map<string, string>;
 }
 
 const InboxSidebar: React.FC<InboxSidebarProps> = ({
   messages,
   selectedId,
   onSelectMessage,
+  riskTiers,
 }) => {
+  const [flashingHighIds, setFlashingHighIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const highIds = messages
+      .filter((msg) => riskTiers.get(msg.id) === "High")
+      .map((msg) => msg.id);
+
+    if (highIds.length === 0) return;
+
+    setFlashingHighIds((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      highIds.forEach((id) => {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+          window.setTimeout(() => {
+            setFlashingHighIds((current) => {
+              const updated = new Set(current);
+              updated.delete(id);
+              return updated;
+            });
+          }, 220);
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [messages, riskTiers]);
+
+  const WarningIcon = () => (
+    <svg className="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h18.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+    </svg>
+  );
+
   return (
     <aside
       className="w-72 flex flex-col border-r"
@@ -68,6 +107,9 @@ const InboxSidebar: React.FC<InboxSidebarProps> = ({
         ) : (
           messages.map((msg) => {
             const isSelected = selectedId === msg.id;
+            const tier = riskTiers.get(msg.id);
+            const isHigh = tier === "High";
+            const flashing = flashingHighIds.has(msg.id);
             return (
               <button
                 key={msg.id}
@@ -76,7 +118,7 @@ const InboxSidebar: React.FC<InboxSidebarProps> = ({
                   isSelected
                     ? "border-l-2 border-l-cyan-400"
                     : "border-l-2 border-l-transparent hover:border-l-slate-600"
-                }`}
+                } ${isHigh ? "transition-shadow" : ""}`}
                 style={{
                   borderBottomColor: "rgba(148, 163, 184, 0.05)",
                   background: isSelected
@@ -84,15 +126,18 @@ const InboxSidebar: React.FC<InboxSidebarProps> = ({
                     : "transparent",
                 }}
               >
-                <div className="flex items-center gap-2">
+                <div
+                  className={`flex items-center gap-2 rounded-lg px-2 py-1 -mx-2 -my-1 ${
+                    isHigh && flashing ? "bg-red-500/20 ring-1 ring-red-400/40" : isHigh ? "bg-red-500/10" : ""
+                  }`}
+                >
                   <div
-                    className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors ${
-                      isSelected ? "bg-cyan-400" : "bg-slate-700"
-                    }`}
+                    className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors ${isSelected ? "bg-cyan-400" : "bg-slate-700"}`}
                   />
                   <span className="font-medium text-sm text-slate-200 truncate">
                     {msg.sender}
                   </span>
+                  {isHigh && <span className="ml-auto"><WarningIcon /></span>}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5 truncate pl-4">
                   {msg.subject}

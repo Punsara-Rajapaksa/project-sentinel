@@ -1,10 +1,12 @@
 import React, { useRef, useEffect } from "react";
+import type { HoneypotArtifact } from "../api";
 
 interface HoneypotChatProps {
   conversation: Array<{ role: string; text: string }>;
-  artifacts: string[];
+  artifacts: HoneypotArtifact[];
   isStreaming: boolean;
   isComplete: boolean;
+  onBack: () => void;
 }
 
 const HoneypotChat: React.FC<HoneypotChatProps> = ({
@@ -12,6 +14,7 @@ const HoneypotChat: React.FC<HoneypotChatProps> = ({
   artifacts,
   isStreaming,
   isComplete,
+  onBack,
 }) => {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -48,6 +51,12 @@ const HoneypotChat: React.FC<HoneypotChatProps> = ({
         <span className="text-[10px] text-red-500/50 font-mono font-medium px-2 py-1 rounded bg-red-500/10 border border-red-500/20">
           AGENT 5
         </span>
+        <button
+          onClick={onBack}
+          className="ml-2 text-[10px] font-semibold text-red-200 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-full hover:bg-red-500/20 transition"
+        >
+          Back to analysis
+        </button>
       </div>
 
       {/* Chat Messages */}
@@ -119,9 +128,12 @@ const HoneypotChat: React.FC<HoneypotChatProps> = ({
             {artifacts.map((a, i) => (
               <li key={i} className="flex items-start gap-2 text-xs message-enter">
                 <span className="text-red-400 mt-0.5 text-[10px]">◆</span>
-                <code className="text-red-300 font-mono break-all bg-red-500/10 rounded px-2 py-1 border border-red-500/15 text-[11px]">
-                  {a}
-                </code>
+                <div className="flex flex-col gap-1 min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-red-400/70">{a.type}</span>
+                  <code className="text-red-300 font-mono break-all bg-red-500/10 rounded px-2 py-1 border border-red-500/15 text-[11px]">
+                    {a.value}
+                  </code>
+                </div>
               </li>
             ))}
           </ul>
