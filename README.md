@@ -45,9 +45,9 @@ Ingestion Agent → Semantic Risk Agent → Verification Agent → Explainer Age
 | Frontend | React (Vite + Tailwind CSS) |
 | Testing | pytest |
 
----
-
 ## 📁 Repository Structure
+
+---
 project-sentinel/
 ├── backend/
 │ ├── app/
