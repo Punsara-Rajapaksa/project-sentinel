@@ -45,32 +45,6 @@ Ingestion Agent → Semantic Risk Agent → Verification Agent → Explainer Age
 | Frontend | React (Vite + Tailwind CSS) |
 | Testing | pytest |
 
-## 📁 Repository Structure
-
-project-sentinel/
-├── backend/
-│ ├── app/
-│ │ ├── agents/ # Individual agent implementations
-│ │ ├── api/ # FastAPI routes
-│ │ ├── utils/ # Anonymiser, ChromaDB client, DeepSeek client
-│ │ ├── state.py # PipelineState TypedDict
-│ │ ├── graph.py # LangGraph graph definition
-│ │ └── main.py # FastAPI application
-│ ├── tests/ # pytest test suite
-│ ├── chroma_db/ # Persistent vector store
-│ ├── requirements.txt
-│ └── .env.example
-├── frontend/
-│ ├── src/
-│ │ ├── components/ # InboxSidebar, MessageView, RiskPanel, HoneypotChat
-│ │ ├── api.ts # API client functions
-│ │ └── App.tsx # Main dashboard
-│ ├── vite.config.ts # Vite proxy config
-│ └── package.json
-├── report/ # Project evaluation report (PDF)
-├── .gitignore
-└── README.md
-
 ## 🚀 Getting Started
 
 ### Prerequisites
