@@ -21,8 +21,7 @@ def agent_4_explain(state: PipelineState) -> dict:
     return explainer_agent(state)
 
 def agent_5_honeypot(state: PipelineState) -> dict:
-    # Placeholder
-    return {"timestamp": state.get("timestamp", "")}
+    return honeypot_agent(state)
 
 
 def should_activate_honeypot(state: PipelineState) -> str:

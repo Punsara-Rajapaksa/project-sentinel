@@ -5,8 +5,9 @@ import MessageView from "./components/MessageView";
 import RiskPanel from "./components/RiskPanel";
 import { analyzeMessage } from "./api";
 import type { AnalysisResponse } from "./api";
+import "./App.css";
 
-// ── Demo Messages ─────────────────────────────────────
+// ── Demo Messages ─────────────────────────────────
 const DEMO_MESSAGES = [
   {
     sender: "lecturer@university.ac.lk",
@@ -25,13 +26,13 @@ const DEMO_MESSAGES = [
   },
 ];
 
-/* Agent pipeline stages shown at the top of the UI */
+/* Agent pipeline stages */
 const PIPELINE = [
-  { id: 1, label: "Ingestion", active: true },
-  { id: 2, label: "Semantic Risk", active: true },
-  { id: 3, label: "OSINT Verify", active: true },
-  { id: 4, label: "Explainer", active: true },
-  { id: 5, label: "Honeypot", active: false },
+  { id: 1, label: "Ingestion" },
+  { id: 2, label: "Semantic Risk" },
+  { id: 3, label: "OSINT Verify" },
+  { id: 4, label: "Explainer" },
+  { id: 5, label: "Honeypot" },
 ];
 
 function App() {
@@ -41,17 +42,16 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [demoRunning, setDemoRunning] = useState(false);
+  const [honeypotActive, setHoneypotActive] = useState(false);
   const demoIndexRef = useRef(0);
   const demoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Analysis cache: avoid re-fetching the same message ──
+  // ── Analysis cache ──
   const analysisCache = useRef<Map<string, AnalysisResponse>>(new Map());
-
   const selectedMessage = messages.find((m) => m.id === selectedId) || null;
 
-  // ── Analyse only when selectedId changes (NOT when messages array changes) ──
+  // ── Run Analysis ──
   const runAnalysis = useCallback(async (msgId: string, fullText: string) => {
-    // Check cache first
     const cached = analysisCache.current.get(msgId);
     if (cached) {
       setAnalysis(cached);
@@ -63,6 +63,7 @@ function App() {
     setLoading(true);
     setError(null);
     setAnalysis(null);
+    setHoneypotActive(false);
     try {
       const result = await analyzeMessage(fullText);
       analysisCache.current.set(msgId, result);
@@ -79,16 +80,15 @@ function App() {
       setAnalysis(null);
       setError(null);
       setLoading(false);
+      setHoneypotActive(false);
       return;
     }
-
     const msg = messages.find((m) => m.id === selectedId);
     if (!msg) return;
-
     runAnalysis(msg.id, msg.fullText);
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Demo: add a message ───────────────────────────────
+  // ── Demo ──
   const addDemoMessage = useCallback(() => {
     if (demoIndexRef.current >= DEMO_MESSAGES.length) {
       setDemoRunning(false);
@@ -105,23 +105,20 @@ function App() {
     demoIndexRef.current += 1;
     setMessages((prev) => {
       const updated = [...prev, msg];
-      // Only auto-select the first message; after that, stay where the user is
-      if (updated.length === 1) {
-        setSelectedId(msg.id);
-      }
+      if (updated.length === 1) setSelectedId(msg.id);
       return updated;
     });
-    // Eagerly pre-fetch analysis for this message in the background
     if (!analysisCache.current.has(msg.id)) {
       analyzeMessage(msg.fullText).then((result) => {
         analysisCache.current.set(msg.id, result);
-      }).catch(() => { /* silently ignore pre-fetch errors */ });
+      }).catch(() => {});
     }
   }, []);
 
   const startDemo = useCallback(() => {
     if (demoRunning) return;
     setDemoRunning(true);
+    setHoneypotActive(false);
     demoIndexRef.current = 0;
     setMessages([]);
     analysisCache.current.clear();
@@ -135,60 +132,75 @@ function App() {
     };
   }, []);
 
-  // ── User action handlers ──────────────────────────────
+  // ── Handlers ──
   const handleConfirmThreat = () => console.log("Threat confirmed:", analysis?.request_id);
-  const handleFalsePositive  = () => console.log("False positive:", analysis?.request_id);
-  const handleDismiss        = () => console.log("Dismissed");
+  const handleFalsePositive = () => console.log("False positive:", analysis?.request_id);
+  const handleDismiss = () => console.log("Dismissed");
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100">
+    <div className="h-screen flex flex-col" style={{ background: "#0a0e1a" }}>
       {/* ════════ Top Header ════════ */}
-      <header className="bg-gray-900 text-white px-6 py-3 flex items-center justify-between border-b border-gray-700">
+      <header className="gradient-header px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
+          {/* Shield Icon */}
+          <div className="relative">
+            <svg className="w-8 h-8 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-cyan-400 rounded-full animate-pulse" />
+          </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Sentinel</h1>
-            <p className="text-[10px] text-gray-400 leading-tight">AURORA 2026 · Team Four Loop</p>
+            <h1 className="text-lg font-bold tracking-tight text-white" style={{ fontFamily: "'Inter', sans-serif" }}>
+              SudoShield
+            </h1>
+            <p className="text-[10px] text-slate-500 leading-tight font-medium tracking-wide">
+              AURORA 2026 · Team Four Loop
+            </p>
           </div>
         </div>
 
         {/* Agent Pipeline */}
         <nav className="flex items-center gap-0 text-xs">
-          {PIPELINE.map((p, i) => (
-            <div key={p.id} className="flex items-center">
-              <div
-                className={`px-3 py-1.5 rounded font-medium transition-colors ${
-                  p.active
-                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                    : "bg-gray-800 text-gray-500 border border-gray-700"
-                }`}
-              >
-                {p.id}. {p.label}
+          {PIPELINE.map((p, i) => {
+            const isActive = p.id <= 4 || (p.id === 5 && honeypotActive);
+            const isCurrent = p.id === 5 && honeypotActive;
+            return (
+              <div key={p.id} className="flex items-center">
+                <div
+                  className={`pipeline-node px-3 py-1.5 rounded-lg font-semibold transition-all duration-300 ${
+                    isCurrent
+                      ? "bg-red-500/20 text-red-400 border border-red-500/40 glow-red"
+                      : isActive
+                      ? "bg-cyan-500/10 text-cyan-300 border border-cyan-500/25"
+                      : "bg-slate-800/50 text-slate-600 border border-slate-700/50"
+                  }`}
+                >
+                  {p.id}. {p.label}
+                </div>
+                {i < PIPELINE.length - 1 && (
+                  <div className={`w-5 h-px mx-0.5 transition-colors duration-300 ${
+                    isActive && (PIPELINE[i + 1]?.id <= 4 || (PIPELINE[i + 1]?.id === 5 && honeypotActive))
+                      ? "bg-cyan-500/30"
+                      : "bg-slate-700/50"
+                  }`} />
+                )}
               </div>
-              {i < PIPELINE.length - 1 && (
-                <div className={`w-5 h-px mx-0.5 ${p.active && PIPELINE[i + 1]?.active ? "bg-emerald-500/40" : "bg-gray-700"}`} />
-              )}
-            </div>
-          ))}
+            );
+          })}
         </nav>
 
         <button
           onClick={startDemo}
           disabled={demoRunning}
-          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
+          className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-300 flex items-center gap-2 ${
             demoRunning
-              ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-              : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20"
+              ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
+              : "bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white shadow-lg shadow-cyan-900/25 hover:shadow-cyan-900/40 active:scale-[0.97]"
           }`}
         >
           {demoRunning ? (
             <>
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
+              <div className="w-4 h-4 border-2 border-slate-600 border-t-slate-400 rounded-full animate-spin" />
               Demo Running…
             </>
           ) : (
@@ -206,11 +218,19 @@ function App() {
       <div className="flex flex-1 overflow-hidden">
         <InboxSidebar messages={messages} selectedId={selectedId} onSelectMessage={setSelectedId} />
         <MessageView message={selectedMessage} />
-        <div className="w-96 bg-white border-l border-gray-200 flex flex-col">
-          <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-            <h2 className="font-bold text-gray-800">Risk Analysis</h2>
-            {analysis && (
-              <span className="text-[10px] text-gray-400 font-mono">{analysis.request_id?.slice(0, 8)}…</span>
+        <div
+          className="w-[400px] flex flex-col border-l"
+          style={{
+            background: "rgba(15, 23, 42, 0.5)",
+            borderColor: "rgba(148, 163, 184, 0.08)",
+          }}
+        >
+          <div className="px-5 py-3 border-b flex items-center justify-between" style={{ borderColor: "rgba(148, 163, 184, 0.08)" }}>
+            <h2 className="font-bold text-sm text-slate-200 tracking-wide">
+              {honeypotActive ? "🎯 Honeypot" : "🛡 Risk Analysis"}
+            </h2>
+            {analysis && !honeypotActive && (
+              <span className="text-[10px] text-slate-500 font-mono">{analysis.request_id?.slice(0, 8)}…</span>
             )}
           </div>
           <RiskPanel
@@ -220,6 +240,7 @@ function App() {
             onConfirmThreat={handleConfirmThreat}
             onFalsePositive={handleFalsePositive}
             onDismiss={handleDismiss}
+            onHoneypotActive={setHoneypotActive}
           />
         </div>
       </div>
