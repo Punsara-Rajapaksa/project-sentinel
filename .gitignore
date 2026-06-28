@@ -5,6 +5,7 @@ venv/
 *.pyc
 chroma_db/
 Details/
+.venv
 
 # Node
 frontend/node_modules/
