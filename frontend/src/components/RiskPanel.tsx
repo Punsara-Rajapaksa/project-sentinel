@@ -1,16 +1,19 @@
 import React, { useState } from "react";
-import type { AnalysisResponse, HoneypotStreamEvent } from "../api";
-import { streamHoneypot } from "../api";
+import type { AnalysisResponse } from "../api";
 import HoneypotChat from "./HoneypotChat";
+import type { HoneypotSession } from "../App";
 
 interface RiskPanelProps {
   analysis: AnalysisResponse | null;
   loading: boolean;
   error: string | null;
+  isThreatConfirmed: boolean;
+  honeypotSession: HoneypotSession | null;
   onConfirmThreat: () => void;
   onFalsePositive: () => void;
-  onHoneypotActive: (active: boolean) => void;
+  onDeployHoneypot: () => void;
   onBackToAnalysis: () => void;
+  honeypotActive: boolean;
 }
 
 // ── Color helpers ──
@@ -56,69 +59,23 @@ const DangerBar: React.FC<{ pct: number }> = ({ pct }) => {
 };
 
 const RiskPanel: React.FC<RiskPanelProps> = ({
-  analysis, loading, error, onConfirmThreat, onFalsePositive, onHoneypotActive, onBackToAnalysis,
+  analysis,
+  loading,
+  error,
+  isThreatConfirmed,
+  honeypotSession,
+  onConfirmThreat,
+  onFalsePositive,
+  onDeployHoneypot,
+  onBackToAnalysis,
+  honeypotActive,
 }) => {
   const [showPii, setShowPii] = useState(false);
   const [showVerification, setShowVerification] = useState(true);
 
-  // ── Honeypot streaming state ──
-  const [honeypotStreaming, setHoneypotStreaming] = useState(false);
-  const [honeypotComplete, setHoneypotComplete] = useState(false);
-  const [honeypotError, setHoneypotError] = useState<string | null>(null);
-  const [threatConfirmed, setThreatConfirmed] = useState(false);
-  const [conversation, setConversation] = useState<Array<{ role: string; text: string }>>([]);
-  const [harvested, setHarvested] = useState<Array<{ type: string; value: string }>>([]);
-  const streamTokenRef = React.useRef(0);
-
-  const resetHoneypot = () => {
-    streamTokenRef.current += 1;
-    setHoneypotStreaming(false);
-    setHoneypotComplete(false);
-    setHoneypotError(null);
-    setThreatConfirmed(false);
-    setConversation([]);
-    setHarvested([]);
-    onHoneypotActive(false);
-    onBackToAnalysis();
-  };
-
   const handleConfirmThreat = () => {
     if (!analysis) return;
-    setThreatConfirmed(true);
     onConfirmThreat();
-  };
-
-  const handleDeployHoneypot = async () => {
-    if (!analysis) return;
-    const token = streamTokenRef.current + 1;
-    streamTokenRef.current = token;
-    setHoneypotStreaming(true);
-    setHoneypotComplete(false);
-    setHoneypotError(null);
-    setConversation([]);
-    setHarvested([]);
-    onHoneypotActive(true);
-
-    await streamHoneypot(
-      analysis,
-      (event: HoneypotStreamEvent) => {
-        if (streamTokenRef.current !== token) return;
-        if (event.type === "message" && event.role && event.text) {
-          setConversation((prev) => [...prev, { role: event.role!, text: event.text! }]);
-        } else if (event.type === "artifact" && event.artifacts) {
-          setHarvested(event.artifacts);
-        } else if (event.type === "done") {
-          setHoneypotComplete(true);
-          setHoneypotStreaming(false);
-          if (event.artifacts) setHarvested(event.artifacts);
-        }
-      },
-      (err: Error) => {
-        if (streamTokenRef.current !== token) return;
-        setHoneypotError(err.message);
-        setHoneypotStreaming(false);
-      },
-    );
   };
 
   // ── Loading State ──
@@ -168,14 +125,14 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
   }
 
   // ── Honeypot Error ──
-  if (honeypotError) {
+  if (honeypotSession?.error && honeypotActive) {
     return (
       <div className="p-5">
         <div className="glass-card gradient-danger p-4 border-red-500/20">
           <h3 className="text-sm font-bold text-red-400 mb-1">Honeypot Error</h3>
-          <p className="text-sm text-red-300/80">{honeypotError}</p>
+          <p className="text-sm text-red-300/80">{honeypotSession.error}</p>
           <button
-            onClick={resetHoneypot}
+            onClick={onBackToAnalysis}
             className="mt-3 w-full py-2 rounded-xl text-sm font-semibold text-red-200 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition"
           >
             Back to analysis
@@ -186,14 +143,14 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
   }
 
   // ── Honeypot Active (streaming or complete) ──
-  if (conversation.length > 0 || honeypotStreaming) {
+  if (honeypotActive && honeypotSession) {
     return (
       <HoneypotChat
-        conversation={conversation}
-        artifacts={harvested}
-        isStreaming={honeypotStreaming}
-        isComplete={honeypotComplete}
-        onBack={resetHoneypot}
+        conversation={honeypotSession.conversation}
+        artifacts={honeypotSession.artifacts}
+        isStreaming={honeypotSession.isStreaming}
+        isComplete={honeypotSession.isComplete}
+        onBack={onBackToAnalysis}
       />
     );
   }
@@ -384,23 +341,23 @@ const RiskPanel: React.FC<RiskPanelProps> = ({
             <>
               <button
                 onClick={handleConfirmThreat}
-                disabled={threatConfirmed}
+                disabled={isThreatConfirmed}
                 className="w-full py-3 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 transition-all duration-300 shadow-lg shadow-red-900/30 hover:shadow-red-900/50 active:scale-[0.98]"
               >
-                {threatConfirmed ? "Threat Confirmed" : "Confirm Threat"}
+                {isThreatConfirmed ? "Threat Confirmed" : "Confirm Threat"}
               </button>
-              {analysis.composite_risk_score > 0.7 && (
+              {isThreat && (
                 <button
-                  onClick={handleDeployHoneypot}
-                  disabled={!threatConfirmed || honeypotStreaming}
+                  onClick={onDeployHoneypot}
+                  disabled={!isThreatConfirmed}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold text-red-200 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Deploy Honeypot
+                  {honeypotSession ? "View Honeypot" : "Deploy Honeypot"}
                 </button>
               )}
               <button
                 onClick={onFalsePositive}
-                disabled={honeypotStreaming}
+                disabled={honeypotSession?.isStreaming}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/25 hover:bg-amber-500/20 transition-all duration-300"
               >
                 Flag False Positive

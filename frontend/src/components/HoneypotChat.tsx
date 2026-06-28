@@ -16,11 +16,16 @@ const HoneypotChat: React.FC<HoneypotChatProps> = ({
   isComplete,
   onBack,
 }) => {
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    }
   }, [conversation.length, isComplete]);
 
   return (
@@ -60,7 +65,11 @@ const HoneypotChat: React.FC<HoneypotChatProps> = ({
       </div>
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ background: "rgba(10, 14, 26, 0.5)" }}>
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-3" 
+        style={{ background: "rgba(10, 14, 26, 0.5)" }}
+      >
         {conversation.map((msg, i) => {
           const isScammer = msg.role === "scammer";
           return (
@@ -103,8 +112,6 @@ const HoneypotChat: React.FC<HoneypotChatProps> = ({
             </div>
           </div>
         )}
-
-        <div ref={chatEndRef} />
       </div>
 
       {/* Artifacts Panel */}

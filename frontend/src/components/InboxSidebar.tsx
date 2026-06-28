@@ -15,6 +15,9 @@ interface InboxSidebarProps {
   selectedId: string | null;
   onSelectMessage: (id: string) => void;
   riskTiers: Map<string, string>;
+  analyzingIds: Set<string>;
+  confirmedMessageIds: Set<string>;
+  honeypotSessions: Map<string, any>;
 }
 
 const InboxSidebar: React.FC<InboxSidebarProps> = ({
@@ -22,6 +25,9 @@ const InboxSidebar: React.FC<InboxSidebarProps> = ({
   selectedId,
   onSelectMessage,
   riskTiers,
+  analyzingIds,
+  confirmedMessageIds,
+  honeypotSessions,
 }) => {
   const [flashingHighIds, setFlashingHighIds] = useState<Set<string>>(new Set());
 
@@ -137,7 +143,33 @@ const InboxSidebar: React.FC<InboxSidebarProps> = ({
                   <span className="font-medium text-sm text-slate-200 truncate">
                     {msg.sender}
                   </span>
-                  {isHigh && <span className="ml-auto"><WarningIcon /></span>}
+                  <div className="ml-auto flex items-center gap-1.5">
+                    {honeypotSessions.has(msg.id) && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                        {honeypotSessions.get(msg.id)?.isStreaming && (
+                          <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-ping" />
+                        )}
+                        HONEYPOT
+                      </span>
+                    )}
+                    {confirmedMessageIds.has(msg.id) && !honeypotSessions.has(msg.id) && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
+                        CONFIRMED
+                      </span>
+                    )}
+                    {/* Real-time analyzing spinner */}
+                    {analyzingIds.has(msg.id) && !tier && (
+                      <div className="w-3.5 h-3.5 border-[1.5px] border-slate-600 border-t-cyan-400 rounded-full animate-spin" />
+                    )}
+                    {/* Risk tier badges after analysis completes */}
+                    {tier === "High" && !confirmedMessageIds.has(msg.id) && !honeypotSessions.has(msg.id) && <WarningIcon />}
+                    {tier === "Medium" && !confirmedMessageIds.has(msg.id) && !honeypotSessions.has(msg.id) && (
+                      <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                    )}
+                    {tier === "Low" && (
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                    )}
+                  </div>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5 truncate pl-4">
                   {msg.subject}

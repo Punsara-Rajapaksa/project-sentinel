@@ -3,9 +3,17 @@ import type { Message } from "./components/InboxSidebar";
 import InboxSidebar from "./components/InboxSidebar";
 import MessageView from "./components/MessageView";
 import RiskPanel from "./components/RiskPanel";
-import { analyzeMessage, streamAnalysis } from "./api";
-import type { AnalysisResponse } from "./api";
+import { analyzeMessage, streamAnalysis, streamHoneypot } from "./api";
+import type { AnalysisResponse, HoneypotStreamEvent } from "./api";
 import "./App.css";
+
+export type HoneypotSession = {
+  conversation: Array<{ role: string; text: string }>;
+  artifacts: Array<{ type: string; value: string }>;
+  isStreaming: boolean;
+  isComplete: boolean;
+  error: string | null;
+};
 
 // ── Demo Messages — mix of email and WhatsApp ─────
 const DEMO_MESSAGES: Array<{
@@ -113,13 +121,20 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [demoRunning, setDemoRunning] = useState(false);
   const [honeypotActive, setHoneypotActive] = useState(false);
+  const [confirmedMessageIds, setConfirmedMessageIds] = useState<Set<string>>(new Set());
+  const [honeypotSessions, setHoneypotSessions] = useState<Map<string, HoneypotSession>>(new Map());
   const [, setAgentsComplete] = useState<Set<number>>(new Set());
   const [riskTiers, setRiskTiers] = useState<Map<string, string>>(new Map());
+  const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const demoIndexRef = useRef(0);
   const demoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasManualSelectionRef = useRef(false);
   const analysisCache = useRef<Map<string, AnalysisResponse>>(new Map());
+  const activeStreams = useRef<Set<string>>(new Set());
 
   const selectedMessage = messages.find((m) => m.id === selectedId) || null;
+
+  const currentStreamMsgId = useRef<string | null>(null);
 
   const dismissIntro = () => {
     setIntroFading(true);
@@ -142,24 +157,31 @@ function App() {
     setAnalysis(null);
     setHoneypotActive(false);
     setAgentsComplete(new Set());
+    
+    currentStreamMsgId.current = msgId;
 
     await streamAnalysis(
       fullText,
       (agent, _label, data) => {
+        if (currentStreamMsgId.current !== msgId) return;
         setAnalysis((prev) => ({ ...(prev || {} as AnalysisResponse), ...data }));
         setAgentsComplete((prev) => new Set([...prev, agent]));
+        if (data.risk_tier) {
+          setRiskTiers((prev) => new Map(prev).set(msgId, data.risk_tier as string));
+        }
       },
       (fullResult) => {
+        analysisCache.current.set(msgId, fullResult);
+        if (currentStreamMsgId.current !== msgId) return;
         setAnalysis(fullResult);
         setAgentsComplete(new Set([1, 2, 3, 4]));
-        analysisCache.current.set(msgId, fullResult);
         setLoading(false);
-        // Update risk tier for sidebar
         if (fullResult.risk_tier) {
           setRiskTiers((prev) => new Map(prev).set(msgId, fullResult.risk_tier));
         }
       },
       (err) => {
+        if (currentStreamMsgId.current !== msgId) return;
         setError(err.message);
         setLoading(false);
       },
@@ -177,7 +199,6 @@ function App() {
     }
     const msg = messages.find((m) => m.id === selectedId);
     if (!msg) return;
-    // Reset honeypot when switching messages
     setHoneypotActive(false);
     runStreamingAnalysis(msg.id, msg.fullText);
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -203,17 +224,35 @@ function App() {
     demoIndexRef.current += 1;
     setMessages((prev) => {
       const updated = [...prev, msg];
-      if (updated.length === 1) setSelectedId(msg.id);
+      // Auto-select only the first message; never interrupt current view
+      if (updated.length === 1 && !hasManualSelectionRef.current) {
+        setSelectedId(msg.id);
+      }
       return updated;
     });
-    // Pre-fetch analysis for sidebar risk indicators
+
+    // Pre-fetch analysis for sidebar risk indicators (background)
+    // Show analyzing spinner in sidebar while running
     if (!analysisCache.current.has(msg.id)) {
+      setAnalyzingIds((prev) => new Set(prev).add(msg.id));
       analyzeMessage(msg.fullText).then((result) => {
+        if (analysisCache.current.has(msg.id)) return;
         analysisCache.current.set(msg.id, result);
         if (result.risk_tier) {
           setRiskTiers((prev) => new Map(prev).set(msg.id, result.risk_tier));
         }
-      }).catch(() => {});
+        // If this message happens to be the currently selected one and isn't streaming, update the view
+        if (currentStreamMsgId.current === msg.id) {
+           setAnalysis(result);
+           setLoading(false);
+        }
+      }).catch(() => {}).finally(() => {
+        setAnalyzingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(msg.id);
+          return next;
+        });
+      });
     }
   }, []);
 
@@ -224,6 +263,10 @@ function App() {
     demoIndexRef.current = 0;
     setMessages([]);
     setRiskTiers(new Map());
+    setAnalyzingIds(new Set());
+    setConfirmedMessageIds(new Set());
+    setHoneypotSessions(new Map());
+    hasManualSelectionRef.current = false;
     analysisCache.current.clear();
     // Add first message immediately, then stagger
     addDemoMessage();
@@ -234,8 +277,69 @@ function App() {
     if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
   }, []);
 
-  const handleConfirmThreat = () => console.log("Threat confirmed:", analysis?.request_id);
+  const isThreatConfirmed = selectedId ? confirmedMessageIds.has(selectedId) : false;
+  const honeypotSession = selectedId ? honeypotSessions.get(selectedId) || null : null;
+  const handleConfirmThreat = () => {
+    if (!selectedId) return;
+    setConfirmedMessageIds((prev) => new Set(prev).add(selectedId));
+    console.log("Threat confirmed:", analysis?.request_id);
+  };
   const handleFalsePositive = () => console.log("False positive:", analysis?.request_id);
+
+  const handleDeployHoneypot = useCallback(() => {
+    if (!selectedId || !analysis) return;
+    if (activeStreams.current.has(selectedId) || honeypotSessions.has(selectedId)) {
+      setHoneypotActive(true);
+      return;
+    }
+    
+    const msgId = selectedId;
+    activeStreams.current.add(msgId);
+    setHoneypotActive(true);
+    
+    setHoneypotSessions(prev => {
+      const next = new Map(prev);
+      next.set(msgId, { conversation: [], artifacts: [], isStreaming: true, isComplete: false, error: null });
+      return next;
+    });
+
+    streamHoneypot(
+      analysis,
+      (event: HoneypotStreamEvent) => {
+        setHoneypotSessions(prev => {
+           const session = prev.get(msgId);
+           if (!session) return prev;
+           const nextSession = { ...session };
+           if (event.type === "message" && event.role && event.text) {
+             nextSession.conversation = [...nextSession.conversation, { role: event.role, text: event.text }];
+           } else if (event.type === "artifact" && event.artifacts) {
+             nextSession.artifacts = event.artifacts;
+           } else if (event.type === "done") {
+             nextSession.isComplete = true;
+             nextSession.isStreaming = false;
+             if (event.artifacts) nextSession.artifacts = event.artifacts;
+           }
+           const nextMap = new Map(prev);
+           nextMap.set(msgId, nextSession);
+           return nextMap;
+        });
+      },
+      (err: Error) => {
+        setHoneypotSessions(prev => {
+           const session = prev.get(msgId);
+           if (!session) return prev;
+           const nextMap = new Map(prev);
+           nextMap.set(msgId, { ...session, isStreaming: false, error: err.message });
+           return nextMap;
+        });
+      }
+    );
+  }, [selectedId, analysis, honeypotSessions]);
+
+  const handleSelectMessage = (id: string) => {
+    hasManualSelectionRef.current = true;
+    setSelectedId(id);
+  };
 
   // ── Intro Screen ──
   if (showIntro) {
@@ -318,8 +422,11 @@ function App() {
         <InboxSidebar
           messages={messages}
           selectedId={selectedId}
-          onSelectMessage={setSelectedId}
+          onSelectMessage={handleSelectMessage}
           riskTiers={riskTiers}
+          analyzingIds={analyzingIds}
+          confirmedMessageIds={confirmedMessageIds}
+          honeypotSessions={honeypotSessions}
         />
         <MessageView message={selectedMessage} />
         <div
@@ -338,10 +445,13 @@ function App() {
             analysis={analysis}
             loading={loading}
             error={error}
+            isThreatConfirmed={isThreatConfirmed}
+            honeypotSession={honeypotSession}
             onConfirmThreat={handleConfirmThreat}
             onFalsePositive={handleFalsePositive}
-            onHoneypotActive={setHoneypotActive}
+            onDeployHoneypot={handleDeployHoneypot}
             onBackToAnalysis={() => setHoneypotActive(false)}
+            honeypotActive={honeypotActive}
           />
         </div>
       </div>
